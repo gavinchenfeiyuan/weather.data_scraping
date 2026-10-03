@@ -17,8 +17,11 @@ DEV_ID = "Q154F21609"
 PROJ_ID = "3F2DHCW2QJ"
 PRIVATE_KEY = (BASE / "ed25519-private.pem").read_text()
 
-# 最新数据副本目录（文件名不带时间戳）
-LATEST_DIR = Path("../weather.yuanping.fun/data")
+# 历史数据目录（带时间戳）
+HISTORY_DIR = BASE / "data"
+
+# 最新数据副本目录（文件名不带时间戳，覆盖式）
+LATEST_DIR = BASE.parent / "weather.yuanping.fun" / "data"
 
 # 城市 -> [经度, 纬度]
 LOCATION = {
@@ -53,38 +56,49 @@ def make_token() -> str:
     return jwt.encode(payload, PRIVATE_KEY, algorithm="EdDSA", headers={"kid": KEY_ID})
 
 
-run_all = len(sys.argv) > 1 and sys.argv[1] == "all"
+def fetch(path: str) -> dict:
+    req = urllib.request.Request(HOST + path)
+    req.add_header("Authorization", f"Bearer {make_token()}")
+    req.add_header("Accept-Encoding", "gzip")
 
-now = datetime.now()
-m = now.hour * 60 + now.minute
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        raw = resp.read()
+        if resp.headers.get("Content-Encoding") == "gzip":
+            raw = gzip.decompress(raw)
 
-for period, name, tmpl in TASKS:
-    if run_all or m % period == 0:
+    return json.loads(raw)
+
+
+def main() -> None:
+    run_all = len(sys.argv) > 1 and sys.argv[1] == "all"
+
+    now = datetime.now()
+    m = now.hour * 60 + now.minute
+
+    for period, name, tmpl in TASKS:
+        if not (run_all or m % period == 0):
+            continue
+
         for city, (lon, lat) in LOCATION.items():
             path = tmpl.format(lat=lat, lon=lon)
             try:
-                req = urllib.request.Request(HOST + path)
-                req.add_header("Authorization", f"Bearer {make_token()}")
-                req.add_header("Accept-Encoding", "gzip")
-
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    raw = resp.read()
-                    if resp.headers.get("Content-Encoding") == "gzip":
-                        raw = gzip.decompress(raw)
-
-                data = json.loads(raw)
+                data = fetch(path)
                 text = json.dumps(data, ensure_ascii=False, indent=2)
 
-                # 带时间戳的历史文件
-                out = BASE / "data" / city / f"{name}_{now:%Y%m%d_%H%M%S}.json"
-                out.parent.mkdir(parents=True, exist_ok=True)
-                out.write_text(text, encoding="utf-8")
+                # 历史文件（带时间戳）
+                history = HISTORY_DIR / city / f"{name}_{now:%Y%m%d_%H%M%S}.json"
+                history.parent.mkdir(parents=True, exist_ok=True)
+                history.write_text(text, encoding="utf-8")
 
-                # 覆盖式最新副本
+                # 最新副本（覆盖式，无时间戳）
                 latest = LATEST_DIR / city / f"{name}.json"
                 latest.parent.mkdir(parents=True, exist_ok=True)
                 latest.write_text(text, encoding="utf-8")
 
-                print(f"[{now:%F %T}] {city} {name} -> {out} | {latest}")
+                print(f"[{now:%F %T}] {city} {name} -> {history} | {latest}")
             except Exception as e:
                 print(f"[{now:%F %T}] {city} {name} 失败: {e}")
+
+
+if __name__ == "__main__":
+    main()
