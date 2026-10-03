@@ -27,6 +27,10 @@ LATEST_DIR = BASE.parent / "weather.yuanping.fun" / "data"
 # git 仓库根目录
 GIT_DIR = LATEST_DIR.parent
 
+# 夜间休眠区间：00:00 - 06:00（小时数 [0, 6) 时跳过）
+NIGHT_START = 0
+NIGHT_END = 6
+
 # 城市 -> [经度, 纬度]
 LOCATION = {
     "上海": [121.49, 31.12],
@@ -75,7 +79,7 @@ def fetch(path: str) -> dict:
 
 def git_sync(now: datetime) -> None:
     """提交并推送最新数据"""
-    env = {"GIT_TERMINAL_PROMPT": "0"}  # 禁止 git 交互，防止 cron 卡死
+    env = {"GIT_TERMINAL_PROMPT": "0"}
 
     def run(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(
@@ -89,7 +93,6 @@ def git_sync(now: datetime) -> None:
 
     run("add", "-A")
 
-    # 没有变化就跳过
     diff = run("diff", "--cached", "--quiet")
     if diff.returncode == 0:
         print(f"[{now:%F %T}] git: 无变化，跳过 commit")
@@ -113,6 +116,12 @@ def main() -> None:
     run_all = len(sys.argv) > 1 and sys.argv[1] == "all"
 
     now = datetime.now()
+
+    # 夜间休眠：定时触发时跳过；手动 all 不受限
+    if not run_all and NIGHT_START <= now.hour < NIGHT_END:
+        print(f"[{now:%F %T}] 夜间 {NIGHT_START:02d}:00-{NIGHT_END:02d}:00，跳过")
+        return
+
     m = now.hour * 60 + now.minute
 
     for period, name, tmpl in TASKS:
@@ -125,12 +134,10 @@ def main() -> None:
                 data = fetch(path)
                 text = json.dumps(data, ensure_ascii=False, indent=2)
 
-                # 历史文件（带时间戳）
                 history = HISTORY_DIR / city / f"{name}_{now:%Y%m%d_%H%M%S}.json"
                 history.parent.mkdir(parents=True, exist_ok=True)
                 history.write_text(text, encoding="utf-8")
 
-                # 最新副本（覆盖式，无时间戳）
                 latest = LATEST_DIR / city / f"{name}.json"
                 latest.parent.mkdir(parents=True, exist_ok=True)
                 latest.write_text(text, encoding="utf-8")
