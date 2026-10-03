@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
-import subprocess
+import json
 import sys
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
+TOKEN = "f572ba067544457b9050079432345cfe"
+HOST = "https://nq5u9n4tmv.re.qweatherapi.com"
 
 TASKS = [
-    (30, "job_realtime_weather.py"),  # 实时天气, 30分钟
-    (60, "job_hourly_forecast.py"),  # 逐小时天气预报, 60分钟
-    (360, "job_daily_forecast.py"),  # 逐天天气预报, 6小时
-    (20, "job_weather_alert.py"),  # 天气预警, 20分钟
-    (720, "job_weather_index.py"),  # 天气指数, 12小时
-    (10, "job_minutely_precip.py"),  # 分钟降水, 10分钟
-    (60, "job_realtime_aqi.py"),  # 实时空气质量, 60分钟
-    (720, "job_daily_aqi_forecast.py"),  # 空气质量逐天预报, 12小时
+    (30, "realtime_weather", "/weather/v1/current/39.92/116.41"),
+    # (60, "hourly_forecast", "/weather/v1/hourly/39.92/116.41"),
+    # (360, "daily_forecast", "/weather/v1/daily/39.92/116.41"),
+    # (20, "weather_alert", "/weather/v1/alert/39.92/116.41"),
+    # (720, "weather_index", "/weather/v1/index/39.92/116.41"),
+    # (10, "minutely_precip", "/weather/v1/minutely/39.92/116.41"),
+    # (60, "realtime_aqi", "/air/v1/current/39.92/116.41"),
+    # (720, "daily_aqi_forecast", "/air/v1/daily/39.92/116.41"),
 ]
 
 run_all = len(sys.argv) > 1 and sys.argv[1] == "all"
@@ -22,7 +25,12 @@ run_all = len(sys.argv) > 1 and sys.argv[1] == "all"
 now = datetime.now()
 m = now.hour * 60 + now.minute
 
-for period, script in TASKS:
+for period, name, path in TASKS:
     if run_all or m % period == 0:
-        print(f"[{now:%F %T}] run {script}")
-        subprocess.Popen(["python3", "-u", str(BASE / script)])
+        req = urllib.request.Request(HOST + path)
+        req.add_header("Authorization", f"Bearer {TOKEN}")
+        data = json.loads(urllib.request.urlopen(req, timeout=30).read())
+        out = BASE / "data" / f"{name}_{now:%Y%m%d_%H%M%S}.json"
+        out.parent.mkdir(exist_ok=True)
+        out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[{now:%F %T}] {name} -> {out}")
