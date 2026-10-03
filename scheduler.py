@@ -19,13 +19,13 @@ PRIVATE_KEY = (BASE / "ed25519-private.pem").read_text()
 
 TASKS = [
     (30, "realtime_weather", "/weather/v1/current/39.92/116.41"),
-    (60, "hourly_forecast", "/weather/v1/hourly/39.92/116.41"),
-    (360, "daily_forecast", "/weather/v1/daily/39.92/116.41"),
-    (20, "weather_alert", "/weather/v1/alert/39.92/116.41"),
-    (720, "weather_index", "/weather/v1/index/39.92/116.41"),
-    (10, "minutely_precip", "/weather/v1/minutely/39.92/116.41"),
-    (60, "realtime_aqi", "/air/v1/current/39.92/116.41"),
-    (720, "daily_aqi_forecast", "/air/v1/daily/39.92/116.41"),
+    # (60, "hourly_forecast", "/weather/v1/hourly/39.92/116.41"),
+    # (360, "daily_forecast", "/weather/v1/daily/39.92/116.41"),
+    # (20, "weather_alert", "/weather/v1/alert/39.92/116.41"),
+    # (720, "weather_index", "/weather/v1/index/39.92/116.41"),
+    # (10, "minutely_precip", "/weather/v1/minutely/39.92/116.41"),
+    # (60, "realtime_aqi", "/air/v1/current/39.92/116.41"),
+    # (720, "daily_aqi_forecast", "/air/v1/daily/39.92/116.41"),
 ]
 
 
