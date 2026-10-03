@@ -17,6 +17,12 @@ DEV_ID = "Q154F21609"
 PROJ_ID = "3F2DHCW2QJ"
 PRIVATE_KEY = (BASE / "ed25519-private.pem").read_text()
 
+LOCATION = {
+    "上海": [121.49, 31.12],
+    "莆田": [119.09, 25.45],
+    "厦门": [118.25, 24.62],
+}
+
 TASKS = [
     # 实时天气, 30分钟
     (30, "realtime_weather", "/weather/v1/current/39.92/116.41"),
@@ -27,9 +33,9 @@ TASKS = [
     # 天气预警, 20分钟
     (20, "weather_alert", "/weatheralert/v1/current/39.92/116.41"),
     # 天气指数, 12小时
-    (720, "weather_index", "/v7/indices/3d?type=0&location=116.41%2C39.92"),
+    (720, "weather_index", "/v7/indices/3d?type=0&location=116.41,39.92"),
     # 分钟降水, 10分钟
-    (10, "minutely_precip", "/v7/minutely/5m?location=116.41%2C39.92"),
+    (10, "minutely_precip", "/v7/minutely/5m?location=116.41,39.92"),
     # 实时空气质量, 60分钟
     (60, "realtime_aqi", "/airquality/v1/current/39.92/116.41"),
     # 空气质量逐天预报, 12小时
