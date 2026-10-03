@@ -18,13 +18,21 @@ PROJ_ID = "3F2DHCW2QJ"
 PRIVATE_KEY = (BASE / "ed25519-private.pem").read_text()
 
 TASKS = [
-    (30, "realtime_weather", "/weather/v1/current/39.92/116.41"),
+    # 实时天气, 30分钟
+    (30, "realtime_weather", "/weather/v1/current/39.92/116.41?localTime=true"),
+    # # 逐小时天气预报, 60分钟
     # (60, "hourly_forecast", "/weather/v1/hourly/39.92/116.41"),
+    # # 逐天天气预报, 6小时
     # (360, "daily_forecast", "/weather/v1/daily/39.92/116.41"),
-    # (20, "weather_alert", "/weather/v1/alert/39.92/116.41"),
+    # # 天气预警, 20分钟
+    # (20, "weather_alert", "/weatheralert/v1/current/39.92/116.41"),
+    # # 天气指数, 12小时
     # (720, "weather_index", "/weather/v1/index/39.92/116.41"),
+    # # 分钟降水, 10分钟
     # (10, "minutely_precip", "/weather/v1/minutely/39.92/116.41"),
+    # # 实时空气质量, 60分钟
     # (60, "realtime_aqi", "/air/v1/current/39.92/116.41"),
+    # # 空气质量逐天预报, 12小时
     # (720, "daily_aqi_forecast", "/air/v1/daily/39.92/116.41"),
 ]
 
