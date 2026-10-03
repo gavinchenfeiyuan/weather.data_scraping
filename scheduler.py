@@ -17,6 +17,10 @@ DEV_ID = "Q154F21609"
 PROJ_ID = "3F2DHCW2QJ"
 PRIVATE_KEY = (BASE / "ed25519-private.pem").read_text()
 
+# 最新数据副本目录（文件名不带时间戳）
+LATEST_DIR = Path("../weather.yuanping.fun/data")
+
+# 城市 -> [经度, 纬度]
 LOCATION = {
     "上海": [121.49, 31.12],
     "莆田": [119.09, 25.45],
@@ -69,11 +73,18 @@ for period, name, tmpl in TASKS:
                         raw = gzip.decompress(raw)
 
                 data = json.loads(raw)
+                text = json.dumps(data, ensure_ascii=False, indent=2)
+
+                # 带时间戳的历史文件
                 out = BASE / "data" / city / f"{name}_{now:%Y%m%d_%H%M%S}.json"
                 out.parent.mkdir(parents=True, exist_ok=True)
-                out.write_text(
-                    json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-                )
-                print(f"[{now:%F %T}] {city} {name} -> {out}")
+                out.write_text(text, encoding="utf-8")
+
+                # 覆盖式最新副本
+                latest = LATEST_DIR / city / f"{name}.json"
+                latest.parent.mkdir(parents=True, exist_ok=True)
+                latest.write_text(text, encoding="utf-8")
+
+                print(f"[{now:%F %T}] {city} {name} -> {out} | {latest}")
             except Exception as e:
                 print(f"[{now:%F %T}] {city} {name} 失败: {e}")
