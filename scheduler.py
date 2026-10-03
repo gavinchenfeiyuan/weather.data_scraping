@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import gzip
 import json
+import os
 import subprocess
 import sys
 import time
@@ -27,7 +28,7 @@ LATEST_DIR = BASE.parent / "weather.yuanping.fun" / "data"
 # git 仓库根目录
 GIT_DIR = LATEST_DIR.parent
 
-# 夜间休眠区间：00:00 - 06:00（小时数 [0, 6) 时跳过）
+# 夜间休眠区间：00:00 - 06:00
 NIGHT_START = 0
 NIGHT_END = 6
 
@@ -79,7 +80,7 @@ def fetch(path: str) -> dict:
 
 def git_sync(now: datetime) -> None:
     """提交并推送最新数据"""
-    env = {"GIT_TERMINAL_PROMPT": "0"}
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
 
     def run(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(
@@ -88,11 +89,12 @@ def git_sync(now: datetime) -> None:
             capture_output=True,
             text=True,
             timeout=120,
-            env={**__import__("os").environ, **env},
+            env=env,
         )
 
     run("add", "-A")
 
+    # 没有变化就跳过
     diff = run("diff", "--cached", "--quiet")
     if diff.returncode == 0:
         print(f"[{now:%F %T}] git: 无变化，跳过 commit")
@@ -102,6 +104,19 @@ def git_sync(now: datetime) -> None:
     c = run("commit", "-m", msg)
     if c.returncode != 0:
         print(f"[{now:%F %T}] git commit 失败: {c.stderr.strip()}")
+        return
+
+    # 拉取远端最新
+    f = run("fetch")
+    if f.returncode != 0:
+        print(f"[{now:%F %T}] git fetch 失败: {f.stderr.strip()}")
+        return
+
+    # 把本地 commit 重放到远端之上
+    r = run("pull", "--rebase")
+    if r.returncode != 0:
+        print(f"[{now:%F %T}] git pull --rebase 失败: {r.stderr.strip()}")
+        run("rebase", "--abort")  # 避免仓库卡在 rebase 中间状态
         return
 
     p = run("push")
@@ -134,10 +149,12 @@ def main() -> None:
                 data = fetch(path)
                 text = json.dumps(data, ensure_ascii=False, indent=2)
 
+                # 历史文件（带时间戳）
                 history = HISTORY_DIR / city / f"{name}_{now:%Y%m%d_%H%M%S}.json"
                 history.parent.mkdir(parents=True, exist_ok=True)
                 history.write_text(text, encoding="utf-8")
 
+                # 最新副本（覆盖式，无时间戳）
                 latest = LATEST_DIR / city / f"{name}.json"
                 latest.parent.mkdir(parents=True, exist_ok=True)
                 latest.write_text(text, encoding="utf-8")
