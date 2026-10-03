@@ -25,4 +25,4 @@ m = now.hour * 60 + now.minute
 for period, script in TASKS:
     if run_all or m % period == 0:
         print(f"[{now:%F %T}] run {script}")
-        # subprocess.Popen(["python3", str(BASE / script)])
+        subprocess.Popen(["python3", "-u", str(BASE / script)])
