@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import gzip
 import json
+import subprocess
 import sys
 import time
 import urllib.request
@@ -22,6 +23,9 @@ HISTORY_DIR = BASE / "data"
 
 # 最新数据副本目录（文件名不带时间戳，覆盖式）
 LATEST_DIR = BASE.parent / "weather.yuanping.fun" / "data"
+
+# git 仓库根目录
+GIT_DIR = LATEST_DIR.parent
 
 # 城市 -> [经度, 纬度]
 LOCATION = {
@@ -69,6 +73,42 @@ def fetch(path: str) -> dict:
     return json.loads(raw)
 
 
+def git_sync(now: datetime) -> None:
+    """提交并推送最新数据"""
+    env = {"GIT_TERMINAL_PROMPT": "0"}  # 禁止 git 交互，防止 cron 卡死
+
+    def run(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["git", *args],
+            cwd=GIT_DIR,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={**__import__("os").environ, **env},
+        )
+
+    run("add", "-A")
+
+    # 没有变化就跳过
+    diff = run("diff", "--cached", "--quiet")
+    if diff.returncode == 0:
+        print(f"[{now:%F %T}] git: 无变化，跳过 commit")
+        return
+
+    msg = f"data update {now:%Y-%m-%d %H:%M:%S}"
+    c = run("commit", "-m", msg)
+    if c.returncode != 0:
+        print(f"[{now:%F %T}] git commit 失败: {c.stderr.strip()}")
+        return
+
+    p = run("push")
+    if p.returncode != 0:
+        print(f"[{now:%F %T}] git push 失败: {p.stderr.strip()}")
+        return
+
+    print(f"[{now:%F %T}] git: 已提交并推送 ({msg})")
+
+
 def main() -> None:
     run_all = len(sys.argv) > 1 and sys.argv[1] == "all"
 
@@ -98,6 +138,8 @@ def main() -> None:
                 print(f"[{now:%F %T}] {city} {name} -> {history} | {latest}")
             except Exception as e:
                 print(f"[{now:%F %T}] {city} {name} 失败: {e}")
+
+    git_sync(now)
 
 
 if __name__ == "__main__":
