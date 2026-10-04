@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import jwt
@@ -54,6 +54,11 @@ TASKS = [
     (720, "daily_aqi_forecast", "/airquality/v1/daily/{lat}/{lon}"),
 ]
 
+# 月相：每天抓一次（周期 1440 分钟），与 10 天预报对齐
+# 每城需要循环 10 个日期各请求一次，不走 TASKS 通用循环
+MOON_PERIOD = 1440
+MOON_DAYS = 10
+
 
 def make_token() -> str:
     now = int(time.time())
@@ -72,6 +77,53 @@ def fetch(path: str) -> dict:
             raw = gzip.decompress(raw)
 
     return json.loads(raw)
+
+
+def fetch_moon_for_city(
+    city: str, lon: float, lat: float, days: int = MOON_DAYS
+) -> dict:
+    """抓取某城未来 N 天月相（每城 N 个请求，取每日 12:00 值）
+
+    月相接口一次只返回单日 24 小时数据，所以需要循环 N 天分别请求。
+    返回结构：
+      { updateTime, city, days: [{date, value, illumination, name, icon}, ...] }
+    - value:        月相数值 0.00-1.00（0=新月，0.5=满月）
+    - illumination: 照明度百分比 0-100
+    - name:         中文名（如"残月"）
+    - icon:         和风官方图标代码 800-807
+    """
+    today = datetime.now().date()
+    rows = []
+
+    for i in range(days):
+        date_str = (today + timedelta(days=i)).strftime("%Y%m%d")
+        path = f"/v7/astronomy/moon?location={lon},{lat}&date={date_str}"
+        try:
+            data = fetch(path)
+            arr = data.get("moonPhase", [])
+            # 取 12:00 那条作为当天代表值，找不到则取中间一条
+            noon = next((p for p in arr if "T12:00" in p.get("fxTime", "")), None)
+            rec = noon or (arr[len(arr) // 2] if arr else None)
+            if rec:
+                rows.append(
+                    {
+                        "date": date_str,
+                        "value": float(rec.get("value", 0)),
+                        "illumination": int(rec.get("illumination", 0)),
+                        "name": rec.get("name", ""),
+                        "icon": rec.get("icon", ""),
+                    }
+                )
+            else:
+                rows.append({"date": date_str, "error": "no data"})
+        except Exception as e:
+            rows.append({"date": date_str, "error": str(e)})
+
+    return {
+        "updateTime": datetime.now().isoformat(timespec="seconds"),
+        "city": city,
+        "days": rows,
+    }
 
 
 def git_sync(now: datetime) -> None:
@@ -152,6 +204,28 @@ def main() -> None:
                 print(f"[{now:%F %T}] {city} {name} -> {history} | {latest}")
             except Exception as e:
                 print(f"[{now:%F %T}] {city} {name} 失败: {e}")
+
+    # ---------- 月相（每城循环 10 天，单独处理） ----------
+    # 不走 TASKS 通用循环：月相接口一次只返回单日数据，需按天循环
+    if run_all or m % MOON_PERIOD == 0:
+        for city, (lon, lat) in LOCATION.items():
+            try:
+                data = fetch_moon_for_city(city, lon, lat)
+                text = json.dumps(data, ensure_ascii=False, indent=2)
+
+                # 历史文件（带时间戳）
+                history = HISTORY_DIR / city / f"moon_phase_{now:%Y%m%d_%H%M%S}.json"
+                history.parent.mkdir(parents=True, exist_ok=True)
+                history.write_text(text, encoding="utf-8")
+
+                # 最新副本（覆盖式，无时间戳）
+                latest = LATEST_DIR / city / "moon_phase.json"
+                latest.parent.mkdir(parents=True, exist_ok=True)
+                latest.write_text(text, encoding="utf-8")
+
+                print(f"[{now:%F %T}] {city} moon_phase -> {history} | {latest}")
+            except Exception as e:
+                print(f"[{now:%F %T}] {city} moon_phase 失败: {e}")
 
     git_sync(now)
 
