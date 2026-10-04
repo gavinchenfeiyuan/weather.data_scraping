@@ -28,10 +28,6 @@ LATEST_DIR = BASE.parent / "weather.yuanping.fun" / "data"
 # git 仓库根目录
 GIT_DIR = LATEST_DIR.parent
 
-# 夜间休眠区间：00:00 - 06:00
-NIGHT_START = 0
-NIGHT_END = 6
-
 # 城市 -> [经度, 纬度]
 LOCATION = {
     "上海": [121.49, 31.12],
@@ -131,12 +127,6 @@ def main() -> None:
     run_all = len(sys.argv) > 1 and sys.argv[1] == "all"
 
     now = datetime.now()
-
-    # 夜间休眠：定时触发时跳过；手动 all 不受限
-    if not run_all and NIGHT_START <= now.hour < NIGHT_END:
-        print(f"[{now:%F %T}] 夜间 {NIGHT_START:02d}:00-{NIGHT_END:02d}:00，跳过")
-        return
-
     m = now.hour * 60 + now.minute
 
     for period, name, tmpl in TASKS:
