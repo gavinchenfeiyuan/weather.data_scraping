@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -60,23 +61,49 @@ MOON_PERIOD = 1440
 MOON_DAYS = 10
 
 
+_token_cache = {"token": None, "exp": 0}
+
+
 def make_token() -> str:
     now = int(time.time())
+    if _token_cache["token"] and now < _token_cache["exp"]:
+        return _token_cache["token"]
     payload = {"iss": DEV_ID, "sub": PROJ_ID, "iat": now - 30, "exp": now + 900}
-    return jwt.encode(payload, PRIVATE_KEY, algorithm="EdDSA", headers={"kid": KEY_ID})
+    token = jwt.encode(payload, PRIVATE_KEY, algorithm="EdDSA", headers={"kid": KEY_ID})
+    _token_cache["token"] = token
+    _token_cache["exp"] = now + 840
+    return token
 
 
-def fetch(path: str) -> dict:
-    req = urllib.request.Request(HOST + path)
-    req.add_header("Authorization", f"Bearer {make_token()}")
-    req.add_header("Accept-Encoding", "gzip")
+def fetch(path: str, max_retries: int = 3) -> dict:
+    last_err = None
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(HOST + path)
+            req.add_header("Authorization", f"Bearer {make_token()}")
+            req.add_header("Accept-Encoding", "gzip")
 
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        raw = resp.read()
-        if resp.headers.get("Content-Encoding") == "gzip":
-            raw = gzip.decompress(raw)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read()
+                if resp.headers.get("Content-Encoding") == "gzip":
+                    raw = gzip.decompress(raw)
 
-    return json.loads(raw)
+            return json.loads(raw)
+        except urllib.error.HTTPError as e:
+            last_err = e
+            # 401/402 是鉴权或配额问题，重试没有意义
+            if e.code in (401, 402):
+                raise
+            # 403 通常是限流，退避久一点
+            sleep_s = (2 ** attempt) * (2 if e.code == 403 else 1)
+            print(f"[fetch] HTTP {e.code} on {path}, retry in {sleep_s}s")
+            time.sleep(sleep_s)
+        except (urllib.error.URLError, TimeoutError) as e:
+            last_err = e
+            sleep_s = 2 ** attempt
+            print(f"[fetch] network error on {path}: {e}, retry in {sleep_s}s")
+            time.sleep(sleep_s)
+    raise last_err
 
 
 def fetch_moon_for_city(
@@ -207,7 +234,7 @@ def main() -> None:
 
     # ---------- 月相（每城循环 10 天，单独处理） ----------
     # 不走 TASKS 通用循环：月相接口一次只返回单日数据，需按天循环
-    if run_all or m % MOON_PERIOD == 0:
+    if run_all or m % MOON_PERIOD == 10:
         for city, (lon, lat) in LOCATION.items():
             try:
                 data = fetch_moon_for_city(city, lon, lat)
@@ -227,7 +254,10 @@ def main() -> None:
             except Exception as e:
                 print(f"[{now:%F %T}] {city} moon_phase 失败: {e}")
 
-    git_sync(now)
+    try:
+        git_sync(now)
+    except subprocess.TimeoutExpired as e:
+        print(f"[{now:%F %T}] git timeout: {e}")
 
 
 if __name__ == "__main__":
